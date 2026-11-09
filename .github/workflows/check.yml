@@ -1,0 +1,26 @@
+name: site check
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: site-check
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 check.py
+        env:
+          CHAT_WEBHOOK: ${{ secrets.CHAT_WEBHOOK }}
+      # Commit state on change. A public repo's schedule is switched off after 60 days
+      # without commits, so also commit a heartbeat when the last commit is >30 days old.
+      - run: |
+          git config user.name "site-uptime"; git config user.email "actions@users.noreply.github.com"
+          if ! git diff --quiet state.json 2>/dev/null || [ -n "$(git status --porcelain state.json)" ]; then
+            git add state.json; git commit -m "state change"; git push
+          elif [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt 2592000 ]; then
+            git commit --allow-empty -m "heartbeat"; git push
+          fi
